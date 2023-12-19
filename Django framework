@@ -1,0 +1,292 @@
+Login:
+# models.py
+from django.contrib.auth.models import User
+
+class UserProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    # Additional fields for user profile
+
+# views.py
+from django.contrib.auth.views import LoginView
+
+class CustomLoginView(LoginView):
+    template_name = 'accounts/login.html'  # Customize as needed
+
+# urls.py
+from django.urls import path
+from .views import CustomLoginView
+
+urlpatterns = [
+    path('login/', CustomLoginView.as_view(), name='login'),
+]
+
+
+Upload File:
+# models.py
+class UploadedFile(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    file = models.FileField(upload_to='uploads/')
+    # Additional fields as needed
+
+# forms.py
+from django import forms
+
+class FileUploadForm(forms.ModelForm):
+    class Meta:
+        model = UploadedFile
+        fields = ['file', 'additional_field']
+
+# views.py
+from .forms import FileUploadForm
+
+def upload_file(request):
+    if request.method == 'POST':
+        form = FileUploadForm(request.POST, request.FILES)
+        if form.is_valid():
+            instance = form.save(commit=False)
+            instance.user = request.user
+            instance.save()
+            # Redirect or display success message
+    else:
+        form = FileUploadForm()
+
+    return render(request, 'upload_file.html', {'form': form})
+
+
+Sign Up (Return an encrypted URL):
+1)Create a Form for User Registration:
+# forms.py
+from django import forms
+from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.models import User
+
+class SignUpForm(UserCreationForm):
+    email = forms.EmailField(max_length=254, help_text='Required. Inform a valid email address.')
+
+    class Meta:
+        model = User
+        fields = ('username', 'email', 'password1', 'password2')
+
+2)Create a View for User Registration:
+# views.py
+from django.shortcuts import render, redirect
+from .forms import SignUpForm
+
+def signup(request):
+    if request.method == 'POST':
+        form = SignUpForm(request.POST)
+        if form.is_valid():
+            form.save()
+            return redirect('login')  # Redirect to login page upon successful signup
+    else:
+        form = SignUpForm()
+    return render(request, 'signup.html', {'form': form})
+
+3)URL Configuration
+# urls.py
+from django.urls import path
+from .views import signup
+
+urlpatterns = [
+    path('signup/', signup, name='signup'),
+    # other URL patterns
+]
+
+4)Signup Template (signup.html):
+<!-- signup.html -->
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Sign Up</button>
+</form>
+
+
+    Email verification:
+1)Install Required Packages:
+pip install django-allauth
+
+2)Configure Django Settings:
+# settings.py
+INSTALLED_APPS = [
+    # other apps
+    'allauth',
+    'allauth.account',
+    # other apps
+]
+
+# Authentication backends
+AUTHENTICATION_BACKENDS = [
+    # other backends
+    'allauth.account.auth_backends.AuthenticationBackend',
+    # other backends
+]
+
+# Template configuration
+TEMPLATES = [
+    {
+        # other settings
+        'OPTIONS': {
+            'context_processors': [
+                # other processors
+                'allauth.account.context_processors.account',
+                'allauth.socialaccount.context_processors.socialaccount',
+                # other processors
+            ],
+        },
+    },
+]
+
+# Authentication configuration
+ACCOUNT_EMAIL_VERIFICATION = 'mandatory'
+ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 3  # Adjust as needed
+
+3)URL configuration:
+# urls.py
+from django.urls import path, include
+
+urlpatterns = [
+    # other URL patterns
+    path('accounts/', include('allauth.urls')),
+    # other URL patterns
+]
+
+4)Handling Email Verification in Views:
+# views.py
+from allauth.account.views import ConfirmEmailView
+
+class CustomConfirmEmailView(ConfirmEmailView):
+    # Custom logic if needed
+
+# urls.py
+from django.urls import path
+from .views import CustomConfirmEmailView
+
+urlpatterns = [
+    # other URL patterns
+    path('accounts/confirm-email/<str:key>/', CustomConfirmEmailView.as_view(), name='account_confirm_email'),
+    # other URL patterns
+]
+
+python manage.py makemigrations
+python manage.py migrate
+
+
+Login(after email verification)
+# views.py
+from allauth.account.views import ConfirmEmailView
+from django.shortcuts import redirect
+from django.urls import reverse_lazy
+
+class CustomConfirmEmailView(ConfirmEmailView):
+    def get(self, *args, **kwargs):
+        response = super().get(*args, **kwargs)
+        # Redirect to the login page after successful email verification
+        return redirect(reverse_lazy('login'))  # 'login' should match your login URL name
+
+# urls.py
+from django.urls import path
+from .views import CustomConfirmEmailView
+
+urlpatterns = [
+    # other URL patterns
+    path('accounts/confirm-email/<str:key>/', CustomConfirmEmailView.as_view(), name='account_confirm_email'),
+    # other URL patterns
+]
+# views.py
+from django.contrib.auth.views import LoginView
+from django.shortcuts import render
+
+class CustomLoginView(LoginView):
+    template_name = 'accounts/login.html'  # Customize as needed
+
+# urls.py
+from django.urls import path
+from .views import CustomLoginView
+
+urlpatterns = [
+    path('login/', CustomLoginView.as_view(), name='login'),
+    # other URL patterns
+]
+
+Download file:
+# views.py
+from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
+from django.contrib.auth.decorators import login_required
+from .models import UploadedFile
+
+@login_required
+def download_file(request, file_id):
+    uploaded_file = get_object_or_404(UploadedFile, pk=file_id, user=request.user)
+
+    # Logic to handle file download (adjust as needed)
+    file_path = uploaded_file.file.path
+    with open(file_path, 'rb') as file:
+        response = HttpResponse(file.read(), content_type='application/octet-stream')
+        response['Content-Disposition'] = f'attachment; filename={uploaded_file.file.name}'
+        return response
+
+# urls.py
+from django.urls import path
+from .views import download_file
+
+urlpatterns = [
+    # other URL patterns
+    path('download/<int:file_id>/', download_file, name='download_file'),
+    # other URL patterns
+]
+<!-- list_files.html -->
+{% for file in user_uploaded_files %}
+    <a href="{% url 'download_file' file.id %}">{{ file.file.name }}</a>
+{% endfor %}
+
+# project/urls.py
+from django.conf import settings
+from django.conf.urls.static import static
+
+urlpatterns = [
+    # other URL patterns
+]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+List all uploaded files:
+# views.py
+from django.shortcuts import render
+from django.contrib.auth.decorators import login_required
+from .models import UploadedFile
+
+@login_required
+def list_uploaded_files(request):
+    user_uploaded_files = UploadedFile.objects.filter(user=request.user)
+    return render(request, 'list_files.html', {'user_uploaded_files': user_uploaded_files})
+
+# urls.py
+from django.urls import path
+from .views import list_uploaded_files
+
+urlpatterns = [
+    # other URL patterns
+    path('list-files/', list_uploaded_files, name='list_uploaded_files'),
+    # other URL patterns
+]
+# urls.py
+from django.urls import path
+from .views import list_uploaded_files
+
+urlpatterns = [
+    # other URL patterns
+    path('list-files/', list_uploaded_files, name='list_uploaded_files'),
+    # other URL patterns
+]
+<!-- list_files.html -->
+<h2>My Uploaded Files</h2>
+<ul>
+    {% for file in user_uploaded_files %}
+        <li>{{ file.file.name }}</li>
+    {% endfor %}
+</ul>
+
+<!-- some_template.html -->
+<a href="{% url 'list_uploaded_files' %}">View My Files</a>
